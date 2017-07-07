@@ -13,16 +13,19 @@ char CHR2HXPRT(char n) {
 char *bytes2hex(char *bytes, unsigned int len) { /* does not give you string with \00 */
     char *ret;
     if (len == 0) {
-        ret = malloc(1);
-        *ret = '\00';
+        return NULL;
     } else {
-        ret = malloc(len * 2 + 1);
+        ret = malloc(len * 2);
         for (int i = 0; i < len; i++) {
-            ret[i * 2 + 1] = CH2HXPRT((bytes[i] & 0xf0) / 16);
-            ret[i * 2 + 2] = CH2HXPRT(bytes[i] & 0x0f);
+            ret[i * 2] = CH2HXPRT((bytes[i] & 0xf0) / 16);
+            ret[i * 2 + 1] = CH2HXPRT(bytes[i] & 0x0f);
         }
         return ret;
     }
+}
+
+char hex2bytes(char *in) { /* Should malfunction with non-hex chars :P */
+    return ((in[0] > 57) ? (in[0] - 87) : (in[0] - 48)) * 16 + ((in[1] > 57) ? (in[1] - 87) : (in[1] - 48));
 }
 
 void pass2privInit() {
@@ -69,6 +72,58 @@ void num2pubKeyCharInit() {
     }
 }
 
-char *checkPrivKey(char *privKey, char *pubKey) { /* assumes length, 69 chars (64 byte hexcode hash, 5 chars "-000\x00") */
-    /* TODO: find lua code when wifi is avalible */
+char *checkPrivKey(char *privKey, char *pubKey) { /* assumes length, 68 chars (64 byte hexcode hash, 4 chars "-000") */
+    if ((pubKey != NULL) && (pubKey[0] != 'k')) {
+        return NULL;
+    }
+    sha256_init(&c);
+    char out[32];
+    char *out2;
+    /* Hashes privKey twice */
+    sha256_update(&c, privKey, 68);
+    sha256_finalize(&c, out);
+    out2 = bytes2hex(out, 32);
+    sha256_init(&c);
+    sha256_update(&c, out2, 64);
+    free(out2);
+    sha256_finalize(&c, out);
+    out2 = bytes2hex(out);
+    /* Generates "protein" */
+    char protein[18];
+    for (int i = 0; i < 9; i++) {
+        protein[i * 2] = out2[0];
+        protein[i * 2 + 1] = out2[1];
+        for (int j = 0; j < 2; j++) {
+            sha256_init(&c);
+            sha256_update(&c, out2, 64);
+            free(out2);
+            sha256_finalize(&c, out);
+            out2 = bytes2hex(out, 32);
+        }
+    }
+    /* Does scrambly-stuff */
+    short hasDone = 0x01ff;
+    int n = 0;
+    char address[10];
+    address[0] = 'k';
+    while (n < 9) {
+        int link = hex2bytes(out2 + n * 2) % 9;
+        if (hasDone & (2 ^ link)) {
+            hasDone &= ~(2 ^ link);
+            address[n + 1] = pubKeyCharMap[hex2bytes(protein + link * 2)];
+            if (address[n + 1] != pubKey[n + 1]) {
+                free(out2);
+                return NULL;
+            }
+            n = n + 1;
+        } else {
+            sha256_init(&c);
+            sha256_update(&c, out2, 64);
+            free(out2);
+            sha256_finalize(&c, out);
+            out2 = bytes2hex(out, 32);
+        }
+    }
+    free(out2);
+    return address;
 }
