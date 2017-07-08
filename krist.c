@@ -6,6 +6,8 @@
 SHA_CTX c;
 SHA_CTX pass2privTemplate;
 
+char initFlags = 0;
+
 char CHR2HXPRT(char n) {
     return (n > 9) ? (n + 87) : (n + 48);
 }
@@ -29,11 +31,16 @@ char hex2bytes(char *in) { /* Should malfunction with non-hex chars :P */
 }
 
 void pass2privInit() {
+    if (initFlags & 1) {
+        return;
+    }
     sha256_init(&pass2privTemplate);
     sha256_update(&pass2privTemplate, "KRISTWALLET", 11);
+    initFlags |= 1;
 }
 
-char *pass2priv(char *pass, char *str, char final) {
+char *pass2priv(char *pass, char final) {
+    pass2privInit();
     memcpy(&c, &pass2privTemplate, sizeof(c));
     sha256_update(&c, pass, strlen(pass));
     char out[32];
@@ -60,6 +67,9 @@ char *pass2priv(char *pass, char *str, char final) {
 char pubKeyCharMap[256];
 
 void num2pubKeyCharInit() {
+    if (initFlags & 2) {
+        return;
+    }
     int n = 47;
     for (int i = 0; i < 256; i++) {
         if ((i % 7) == 0) {
@@ -70,12 +80,14 @@ void num2pubKeyCharInit() {
         }
         pubKeyCharMap[i] = n;
     }
+    initFlags |= 2;
 }
 
-char *checkPrivKey(char *privKey, char *pubKey) { /* assumes length, 68 chars (64 byte hexcode hash, 4 chars "-000") */
-    if ((pubKey != NULL) && (pubKey[0] != 'k')) {
+char *checkPrivKey(char *privKey, char *pubKey) { /* assumes privKey length, 68 chars (64 byte hexcode hash, 4 chars "-000") */
+    if ((pubKey != NULL) && (pubKey[0] != 'k')) { /* also, assumes pubKey length is 10 and starts with 'k' */
         return NULL;
     }
+    num2pubKeyCharInit();
     sha256_init(&c);
     char out[32];
     char *out2;
@@ -127,3 +139,6 @@ char *checkPrivKey(char *privKey, char *pubKey) { /* assumes length, 68 chars (6
     free(out2);
     return address;
 }
+
+char *checkPass(char *pass, char *key) {
+    
